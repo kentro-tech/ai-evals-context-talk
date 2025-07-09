@@ -1,4 +1,4 @@
-Title: Write logs - Docs - Braintrust
+# Braintrust Write logs - Docs - Braintrust
 
 URL Source: https://www.braintrust.dev/docs/guides/logs/write
 
