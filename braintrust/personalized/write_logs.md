@@ -1,72 +1,174 @@
-# Braintrust Write logs - Docs - Braintrust
+# Braintrust Write logs Docs
 
 URL Source: https://www.braintrust.dev/docs/guides/logs/write
 
-Markdown Content:
-Logs are more than a debugging tool— they are a key part of the feedback loop that drives continuous improvement in your AI application. There are several ways to log things in Braintrust, ranging from higher level for simple use cases, to more complex and customized [spans](https://www.braintrust.dev/docs/guides/traces/customize) for more control.
+There are many ways to log things from high level simple to more complex and customized [spans](https://www.braintrust.dev/docs/guides/traces/customize) for more control.
 
-The simplest way to log to Braintrust is to wrap the code you wish to log with `wrapTraced`for TypeScript, or `@traced` for Python. This works for any function input and output provided. To learn more about tracing, check out the [tracing guide](https://www.braintrust.dev/docs/guides/traces).
+The simplest way to log to Braintrust is to wrap the code you wish to log with `@traced` for Python. This works for any function input and output provided. To learn more about tracing see the [tracing guide](https://www.braintrust.dev/docs/guides/traces).
 
-Most commonly, logs are used for LLM calls. Braintrust includes a wrapper for the OpenAI API that automatically logs your requests. To use it, call `wrapOpenAI` for TypeScript, or `wrap_openai` for Python on your OpenAI instance. We intentionally _do not_[monkey patch](https://en.wikipedia.org/wiki/Monkey_patch) the libraries directly, so that you can use the wrapper in a granular way.
+Most commonly, logs are used for LLM calls. Braintrust includes a `wrap_openai` wrapper to be used on your OpenAI instance for the OpenAI API that automatically logs your requests. We _do not_ monkey patch the libraries directly.
 
-Braintrust will automatically capture and log information behind the scenes:
+Braintrust will automatically capture and log information behind the scenes.  You can see in in a a web-based logging and monitoring interface.  The most important elements of that interface are;:
 
-![Image 1: Log code output](https://www.braintrust.dev/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Fsimple-log.682c5f15.png&w=3840&q=75)
+- Logs and Monitoring Sections
+- Trace and Span View such as a call to a "classify_text" tool with details
+- Input and Output Details
+- Table of Logs
 
-You can use other AI model providers with the OpenAI client through the [AI proxy](https://www.braintrust.dev/docs/guides/proxy). You can also pick from a number of [integrations](https://www.braintrust.dev/docs/guides/traces/integrations) (OpenTelemetry, Vercel AI SDK, and others) or create a [custom LLM client wrapper](https://www.braintrust.dev/docs/guides/traces/customize#wrapping-a-custom-llm-client) in less than 10 lines of code.
 
-### [Logging with `invoke`](https://www.braintrust.dev/docs/guides/logs/write#logging-with-invoke)
+You can use other AI model providers with the OpenAI client through the [AI proxy](https://www.braintrust.dev/docs/guides/proxy). 
 
-For more information about logging when using `invoke` to execute a prompt directly, check out the [prompt guide](https://www.braintrust.dev/docs/guides/functions/prompts#logging).
+```python
+import os
+import time
+ 
+from openai import OpenAI
+ 
+client = OpenAI(
+    base_url="https://api.braintrust.dev/v1/proxy",
+    api_key=os.environ["OPENAI_API_KEY"],  # Can use Braintrust, Anthropic, etc. API keys here
+)
+ 
+start = time.time()
+response = client.chat.completions.create(
+    model="gpt-4o-mini",  # Can use claude-3-5-sonnet-latest, gemini-2.0-flash, etc. here
+    messages=[{"role": "user", "content": "What is a proxy?"}],
+    seed=1,  # A seed activates the proxy's cache
+)
+print(response.choices[0].message.content)
+print(f"Took {time.time()-start}s")
+```
+
+### Logging with `invoke`
+
+```python
+import os
+ 
+from braintrust import init_logger, traced, wrap_openai
+from openai import OpenAI
+ 
+logger = init_logger(project="My Project")
+ 
+client = wrap_openai(OpenAI(api_key=os.environ["OPENAI_API_KEY"]))
+ 
+ 
+@traced
+def some_llm_function(input):
+    return client.chat.completions.create(
+        messages=[
+            {
+                "role": "system",
+                "content": "Classify the following text as a question or a statement.",
+            },
+            {
+                "role": "user",
+                "content": input,
+            },
+        ],
+        model="gpt-4o",
+    )
+ 
+ 
+def my_route_handler(req):
+    with logger.start_span() as span:
+        body = req.body
+        result = some_llm_function(body)
+        span.log(input=body, output=result)
+        return {
+            "result": result,
+            "request_id": span.id,
+        }
+ 
+ 
+# Assumes that the request is a JSON object with the requestId generated
+# by the previous POST request, along with additional parameters like
+# score (should be 1 for thumbs up and 0 for thumbs down), comment, and userId.
+def my_feedback_handler(req):
+    logger.log_feedback(
+        id=req.body.request_id,
+        scores={
+            "correctness": req.body.score,
+        },
+        comment=req.body.comment,
+        metadata={
+            "user_id": req.user.id,
+        },
+    )
+```
 
 Braintrust supports logging user feedback, which can take multiple forms:
 
-*   A **score** for a specific span, e.g. the output of a request could be 👍 (corresponding to 1) or 👎 (corresponding to 0), or a document retrieved in a vector search might be marked as relevant or irrelevant on a scale of 0->1.
+*   A **score** for a specific span, e.g. the output of a request could be thumbs-up (corresponding to 1) or thumbs-down (corresponding to 0).
 *   An **expected** value, which gets saved in the `expected` field of a span, alongside `input` and `output`. This is a great place to store corrections.
-*   A **comment**, which is a free-form text field that can be used to provide additional context.
+*   A **comment** free-form text field that can be used to provide additional context.
 *   Additional **metadata** fields, which allow you to track information about the feedback, like the `user_id` or `session_id`.
 
-Each time you submit feedback, you can specify one or more of these fields using the `logFeedback()` / `log_feedback()` method, which simply needs you to specify the `span_id` corresponding to the span you want to log feedback for, and the feedback fields you want to update. As you log user feedback, the fields will update in real time.
+Each time you submit feedback, you can specify one or more of these fields using the `logFeedback()` / `log_feedback()` method, which needs you to specify the `span_id` corresponding to the span you want to log feedback for, and the feedback fields you want to update. As you log user feedback, the fields will update in real time.
 
 The following example shows how to log feedback within a simple API endpoint.
 
-### [Collecting multiple scores](https://www.braintrust.dev/docs/guides/logs/write#collecting-multiple-scores)
+### Collecting multiple scores
 
 Often, you want to collect multiple scores for a single span. For example, multiple users might provide independent feedback on a single document. Although each score and expected value is logged separately, each update overwrites the previous value. Instead, to capture multiple scores, you should create a new span for each submission, and log the score in the `scores` field. When you view and use the trace, Braintrust will automatically average the scores for you in the parent span(s).
 
-### [Data model](https://www.braintrust.dev/docs/guides/logs/write#data-model)
+```python
+import os
+ 
+from braintrust import init_logger, traced, wrap_openai
+from openai import OpenAI
+ 
+logger = init_logger(project="My Project")
+ 
+client = wrap_openai(OpenAI(api_key=os.environ["OPENAI_API_KEY"]))
+ 
+ 
+@traced
+def some_llm_function(input):
+    return client.chat.completions.create(
+        messages=[
+            {
+                "role": "system",
+                "content": "Classify the following text as a question or a statement.",
+            },
+            {
+                "role": "user",
+                "content": input,
+            },
+        ],
+        model="gpt-4o",
+    )
+ 
+ 
+def my_route_handler(req):
+    with logger.start_span() as span:
+        body = req.body
+        result = some_llm_function(body)
+        span.log(input=body, output=result)
+        return {
+            "result": result,
+            "request_id": span.export(),
+        }
+ 
+ 
+def my_feedback_handler(req):
+    with logger.start_span("feedback", parent=req.body.request_id) as span:
+        logger.log_feedback(
+            id=span.id,  # Use the newly created span's id, instead of the original request's id
+            scores={
+                "correctness": req.body.score,
+            },
+            comment=req.body.comment,
+            metadata={
+                "user_id": req.user.id,
+            },
+        )
+```
 
-*   Each log entry is associated with an organization and a project. If you do not specify a project name or id in `initLogger()`/`init_logger()`, the SDK will create and use a project named "Global".
-*   Although logs are associated with a single project, you can still use them in evaluations or datasets that belong to any project.
-*   Like evaluation experiments, log entries contain optional `input`, `output`, `expected`, `scores`, `metadata`, and `metrics` fields. These fields are optional, but we encourage you to use them to provide context to your logs.
-*   Logs are indexed automatically to enable efficient search. When you load logs, Braintrust automatically returns the most recently updated log entries first. You can also search by arbitrary subfields, e.g. `metadata.user_id = '1234'`. Currently, inequality filters, e.g. `scores.accuracy > 0.5` do not use an index.
+### Data model
 
-### [Production vs. staging](https://www.braintrust.dev/docs/guides/logs/write#production-vs-staging)
+*   Each log entry is associated with an organization and a project.
+*   Log entries contain optional `input`, `output`, `expected`, `scores`, `metadata`, and `metrics` fields. These fields are mandatory
 
-There are a few ways to handle production vs. staging data. The most common pattern we see is to split them into different projects, so that they are separated and code changes to staging cannot affect production. Separating projects also allows you to enforce [access controls](https://www.braintrust.dev/docs/guides/access-control) at the project level.
+### Initializing
 
-Alternatively, if it's easier to keep things in one project (e.g. to have a single spot to triage them), you can use tags to separate them. If you need to physically isolate production and staging, you can create separate organizations, each mapping to a different deployment.
-
-Experiments, prompts, and playgrounds can all use data across projects. For example, if you want to reference a prompt from your production project in your staging logs, or evaluate using a dataset from staging in a different project, you can do so.
-
-### [Initializing](https://www.braintrust.dev/docs/guides/logs/write#initializing)
-
-The `initLogger()`/`init_logger()` method initializes the logger. Unlike the experiment `init()` method, the logger lazily initializes itself, so that you can call `initLogger()`/`init_logger()` at the top of your file (in module scope). The first time you `log()` or start a span, the logger will log into Braintrust and retrieve/initialize project details.
-
-### [Flushing](https://www.braintrust.dev/docs/guides/logs/write#flushing)
-
-The SDK can operate in two modes: either it sends log statements to the server after each request, or it buffers them in memory and sends them over in batches. Batching reduces the number of network requests and makes the `log()` command as fast as possible. Each SDK flushes logs to the server as fast as possible, and attempts to flush any outstanding logs when the program terminates.
-
-Background batching is controlled by setting the `asyncFlush` / `async_flush` flag in `initLogger()`/`init_logger()`. This flag is `true` by default in both the Python and TypeScript SDKs. It is the safer default, since async flushes mean that clients will not be blocked if Braintrust is down. When async flush mode is on, you can use the `.flush()` method to manually flush any outstanding logs to the server.
-
-### [Serverless environments](https://www.braintrust.dev/docs/guides/logs/write#serverless-environments)
-
-The `asyncFlush` / `async_flush` flag controls whether or not logs are flushed when a trace completes. This flag is set to `true` by default, but extra care should be taken in serverless environments where the process may halt as soon as the request completes.
-
-If the serverless environment does not have `waitUntil`, `asyncFlush: false` should be set. Note that both Vercel and Cloudflare have `waitUntil`.
-
-#### [Vercel](https://www.braintrust.dev/docs/guides/logs/write#vercel)
-
-Braintrust automatically utilizes Vercel's `waitUntil` functionality if it's available, so you can set `asyncFlush: true` in Vercel and your requests will _not_ need to block on logging.
-
-For more advanced logging topics, see the [advanced logging guide](https://www.braintrust.dev/docs/guides/logs/advanced).
+The `init_logger()` method initializes the logger. Unlike the experiment `init()` method, the logger lazily initializes itself, so that you can call `init_logger()` at the top of your file (in module scope). The first time you `log()` or start a span, the logger will log into Braintrust and retrieve/initialize project details.
