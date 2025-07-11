@@ -2,7 +2,6 @@
 
 Companion repo to my talk for Hamel and Shreya's AI Evals course about AI assisted coding for eval tools.
 
-The only think worth looking at in here is the talk.  This is provided in 2 formats:
+The only think worth looking at in here is the talk.  The rest is just screenshots and files useful in giving the talk.
 
-- The Presentation: 
-- Raw Jupyter Notebook is `presentation.ipynb`.  You almost certainly don't actually want this.
+Here is the talk:  https://kentro-tech.github.io/ai-evals-context-talk/presentation.html
