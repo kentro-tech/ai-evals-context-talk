@@ -19,24 +19,19 @@ Braintrust will automatically capture and log information behind the scenes.  Yo
 You can use other AI model providers with the OpenAI client through the [AI proxy](https://www.braintrust.dev/docs/guides/proxy). 
 
 ```python
-import os
-import time
- 
 from openai import OpenAI
  
 client = OpenAI(
     base_url="https://api.braintrust.dev/v1/proxy",
-    api_key=os.environ["OPENAI_API_KEY"],  # Can use Braintrust, Anthropic, etc. API keys here
+    api_key=os.environ["OPENAI_API_KEY"],  
 )
  
-start = time.time()
 response = client.chat.completions.create(
-    model="gpt-4o-mini",  # Can use claude-3-5-sonnet-latest, gemini-2.0-flash, etc. here
+    model="gpt-4o-mini", 
     messages=[{"role": "user", "content": "What is a proxy?"}],
     seed=1,  # A seed activates the proxy's cache
 )
-print(response.choices[0].message.content)
-print(f"Took {time.time()-start}s")
+print(response.choices[0].message.content))
 ```
 
 ### Logging with `invoke`
